@@ -1,74 +1,91 @@
 const express = require('express');
-const { createBareServer } = require('@tomphttp/bare-server-node');
 const path = require('path');
-const { createServer } = require('http');
 
 const app = express();
-const server = createServer();
+app.use(express.json());
 
-let bareServer;
-try {
-    bareServer = createBareServer('/bare/');
-} catch (err) {
-    console.error('Bare server init error:', err);
-}
-
-// Serve static files (your frontend)
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve Ultraviolet files - try to load from node_modules
-try {
-    const uvPath = require.resolve('@titaniumnetwork-dev/ultraviolet');
-    const uvDir = path.dirname(uvPath);
-    app.use('/uv/', express.static(uvDir));
-} catch (err) {
-    console.log('UV not in node_modules, serving from public');
-}
+// CORS middleware
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
-// Health check endpoint
-app.get('/health', (req, res) => {
+// Proxy endpoint - fetches URLs and returns content
+app.get('/api/proxy', async (req, res) => {
+    try {
+        const targetUrl = req.query.url;
+        
+        if (!targetUrl) {
+            return res.status(400).json({ error: 'URL parameter required' });
+        }
+
+        // Use dynamic import for node-fetch
+        const fetch = (await import('node-fetch')).default;
+        
+        const response = await fetch(targetUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            redirect: 'follow'
+        });
+
+        const contentType = response.headers.get('content-type') || 'text/html';
+        const body = await response.text();
+
+        // Rewrite URLs in HTML to go through proxy
+        let processedBody = body;
+        if (contentType.includes('text/html')) {
+            processedBody = body
+                .replace(/href="\/\//g, 'href="https://')
+                .replace(/src="\/\//g, 'src="https://')
+                .replace(/href="\//g, `href="/api/proxy?url=${encodeURIComponent(new URL(targetUrl).origin)}/`)
+                .replace(/src="\//g, `src="/api/proxy?url=${encodeURIComponent(new URL(targetUrl).origin)}/`);
+        }
+
+        res.setHeader('Content-Type', contentType);
+        res.send(processedBody);
+
+    } catch (error) {
+        console.error('Proxy error:', error);
+        res.status(500).json({ 
+            error: 'Proxy request failed', 
+            message: error.message 
+        });
+    }
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
     res.json({ 
-        status: 'ok', 
-        message: 'Trojan Proxy is running!',
-        timestamp: new Date().toISOString()
+        status: 'online',
+        service: 'Trojan Proxy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        creator: 'Kiaan Iyer'
     });
 });
 
-// Bare server handling
-if (bareServer) {
-    server.on('request', (req, res) => {
-        if (bareServer.shouldRoute(req)) {
-            bareServer.routeRequest(req, res);
-        } else {
-            app(req, res);
-        }
-    });
-
-    server.on('upgrade', (req, socket, head) => {
-        if (bareServer.shouldRoute(req)) {
-            bareServer.routeUpgrade(req, socket, head);
-        } else {
-            socket.end();
-        }
-    });
-} else {
-    server.on('request', app);
-}
-
-// Catch-all route to serve index.html
+// Serve index.html for all other routes
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// For Vercel, export the app
+// Export for Vercel
 module.exports = app;
 
-// For local development
+// Local development
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
-    server.listen(PORT, () => {
-        console.log(`🛡️  Trojan Proxy Server Running`);
-        console.log(`📡 Server: http://localhost:${PORT}`);
+    app.listen(PORT, () => {
+        console.log(`🛡️ Trojan Proxy Server Running on port ${PORT}`);
         console.log(`✨ Created by Kiaan Iyer`);
     });
 }

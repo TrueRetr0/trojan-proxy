@@ -7,26 +7,8 @@ const settings = {
     cloakIcon: 'https://ssl.gstatic.com/classroom/favicon.png',
     antiClose: false,
     tabTitle: 'Trojan Proxy',
-    tabIcon: '🛡️',
-    proxyBackend: 'uv'
+    tabIcon: '🛡️'
 };
-
-// Production proxy configuration - uses Ultraviolet
-const isProduction = true;
-
-// Initialize Ultraviolet Service Worker
-async function registerServiceWorker() {
-    if ('serviceWorker' in navigator) {
-        try {
-            await navigator.serviceWorker.register('/sw.js', {
-                scope: '/service/'
-            });
-            console.log('✅ UV Service Worker registered');
-        } catch (error) {
-            console.error('❌ SW registration failed:', error);
-        }
-    }
-}
 
 // Load settings from localStorage
 function loadSettings() {
@@ -52,7 +34,6 @@ function applySettings() {
     document.getElementById('antiCloseToggle').checked = settings.antiClose;
     document.getElementById('tabTitle').value = settings.tabTitle;
     document.getElementById('tabIcon').value = settings.tabIcon;
-    document.getElementById('proxyType').value = settings.proxyBackend;
     
     updateTabInfo(settings.tabTitle, settings.tabIcon);
 }
@@ -175,12 +156,6 @@ document.getElementById('antiCloseToggle').addEventListener('change', (e) => {
     saveSettings();
 });
 
-// Proxy backend selection
-document.getElementById('proxyType').addEventListener('change', (e) => {
-    settings.proxyBackend = e.target.value;
-    saveSettings();
-});
-
 // Tab customization
 document.getElementById('applyTabBtn').addEventListener('click', () => {
     settings.tabTitle = document.getElementById('tabTitle').value;
@@ -228,9 +203,8 @@ const closeProxyBtn = document.getElementById('closeProxyBtn');
 function openProxy(url) {
     proxyContainer.classList.add('active');
     
-    // Encode URL for Ultraviolet
-    const encodedUrl = __uv$config.encodeUrl(url);
-    const proxyUrl = __uv$config.prefix + encodedUrl;
+    // Use our proxy endpoint
+    const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
     
     proxyFrame.src = proxyUrl;
     urlBar.value = url;
@@ -312,6 +286,7 @@ editBtn.addEventListener('click', () => {
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                z-index: 10;
             `;
             deleteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -325,11 +300,7 @@ editBtn.addEventListener('click', () => {
 });
 
 // Initialize
-async function init() {
-    await registerServiceWorker();
-    loadSettings();
-    setupAutoCloak();
-    console.log('🛡️ Trojan Proxy initialized - Created by Kiaan Iyer');
-}
+loadSettings();
+setupAutoCloak();
 
-init();
+console.log('🛡️ Trojan Proxy initialized - Created by Kiaan Iyer');
