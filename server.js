@@ -18,7 +18,15 @@ app.use((req, res, next) => {
     next();
 });
 
-// Proxy endpoint - fetches URLs and returns content
+// Use official Scramjet instance
+const SCRAMJET_INSTANCE = 'https://scramjet.mercurywork.shop';
+
+// Scramjet URL encoding (Base64 with URL encoding)
+function encodeScramjetUrl(url) {
+    return encodeURIComponent(btoa(url));
+}
+
+// Proxy endpoint that routes through Scramjet
 app.get('/api/proxy', async (req, res) => {
     try {
         const targetUrl = req.query.url;
@@ -27,37 +35,32 @@ app.get('/api/proxy', async (req, res) => {
             return res.status(400).json({ error: 'URL parameter required' });
         }
 
+        // Encode URL for Scramjet
+        const encodedUrl = encodeScramjetUrl(targetUrl);
+        const proxyUrl = `${SCRAMJET_INSTANCE}/scramjet/${encodedUrl}`;
+
         // Use dynamic import for node-fetch
         const fetch = (await import('node-fetch')).default;
         
-        const response = await fetch(targetUrl, {
+        const response = await fetch(proxyUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': SCRAMJET_INSTANCE
             },
             redirect: 'follow'
         });
 
         const contentType = response.headers.get('content-type') || 'text/html';
-        const body = await response.text();
-
-        // Rewrite URLs in HTML to go through proxy
-        let processedBody = body;
-        if (contentType.includes('text/html')) {
-            processedBody = body
-                .replace(/href="\/\//g, 'href="https://')
-                .replace(/src="\/\//g, 'src="https://')
-                .replace(/href="\//g, `href="/api/proxy?url=${encodeURIComponent(new URL(targetUrl).origin)}/`)
-                .replace(/src="\//g, `src="/api/proxy?url=${encodeURIComponent(new URL(targetUrl).origin)}/`);
-        }
+        const body = await response.buffer();
 
         res.setHeader('Content-Type', contentType);
-        res.send(processedBody);
+        res.send(body);
 
     } catch (error) {
         console.error('Proxy error:', error);
         res.status(500).json({ 
             error: 'Proxy request failed', 
-            message: error.message 
+            message: error.message
         });
     }
 });
@@ -67,6 +70,8 @@ app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'online',
         service: 'Trojan Proxy',
+        backend: 'Scramjet (MercuryWorkshop)',
+        instance: SCRAMJET_INSTANCE,
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         creator: 'Kiaan Iyer'
@@ -86,6 +91,7 @@ if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
         console.log(`🛡️ Trojan Proxy Server Running on port ${PORT}`);
+        console.log(`⚡ Using Scramjet backend for bypass`);
         console.log(`✨ Created by Kiaan Iyer`);
     });
 }
